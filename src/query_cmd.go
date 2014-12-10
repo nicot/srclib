@@ -21,6 +21,7 @@ func init() {
 		"The query (q) command searches for code in the current project and its dependencies. The results include documentation, definitions, etc.",
 		&queryCmd,
 	)
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -106,9 +107,8 @@ func (c *QueryCmd) Execute(args []string) error {
 				return err
 			}
 
+			fromDep := !graph.URIEqual(def.Repo, repo.URI())
 			if f := def.FmtStrings; f != nil {
-				fromDep := !graph.URIEqual(def.Repo, repo.URI())
-
 				kw := f.DefKeyword
 				if kw != "" {
 					kw += " "
