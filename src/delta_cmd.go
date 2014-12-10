@@ -28,9 +28,27 @@ func init() {
 	}
 
 	_, err = deltaGroup.AddCommand("authors",
-		"list authors that changed between commits",
+		"list authors whose code changed between commits",
 		"The `src delta authors` subcommand lists authors whose code was modified between any 2 commits.",
 		&deltaAuthorsCmd,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = deltaGroup.AddCommand("clients",
+		"list people who used code that changed between commits",
+		"The `src delta clients` subcommand lists people who use code that was modified between any 2 commits.",
+		&deltaClientsCmd,
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_, err = deltaGroup.AddCommand("refs",
+		"list call sites of and references to code that changed between commits",
+		"The `src delta refs` subcommand lists call sites of and references to code that was modified between any 2 commits.",
+		&deltaRefsCmd,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -115,6 +133,73 @@ func (c *DeltaAuthorsCmd) Execute(args []string) error {
 		fmt.Printf("%s contributed to the following changed/deleted definitions:\n", bold(cyan(fmtDeltaPerson(&deltaAuthor.Person))))
 		for _, def := range deltaAuthor.Defs {
 			fmt.Printf("    %s\n", fmtDeltaDefName(def))
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
+type DeltaClientsCmd struct {
+	DeltaCmdCommon
+}
+
+var deltaClientsCmd DeltaClientsCmd
+
+func (c *DeltaClientsCmd) Execute(args []string) error {
+	_, ds, err := getDelta(c.DeltaCmdCommon)
+	if err != nil {
+		return err
+	}
+
+	cl := NewAPIClientWithAuthIfPresent()
+	deltaClients, _, err := cl.Deltas.ListAffectedClients(ds, nil)
+	if err != nil {
+		return err
+	}
+
+	for _, deltaClient := range deltaClients {
+		fmt.Printf("%s uses the following changed/deleted definitions:\n", bold(cyan(fmtDeltaPerson(&deltaClient.Person))))
+		for _, def := range deltaClient.Defs {
+			fmt.Printf("    %s\n", fmtDeltaDefName(def))
+		}
+		fmt.Println()
+	}
+
+	return nil
+}
+
+type DeltaRefsCmd struct {
+	DeltaCmdCommon
+}
+
+var deltaRefsCmd DeltaRefsCmd
+
+func (c *DeltaRefsCmd) Execute(args []string) error {
+	_, ds, err := getDelta(c.DeltaCmdCommon)
+	if err != nil {
+		return err
+	}
+
+	cl := NewAPIClientWithAuthIfPresent()
+	opt := &sourcegraph.DeltaListAffectedDependentsOptions{NotFormatted: true}
+	deltaRepos, _, err := cl.Deltas.ListAffectedDependents(ds, opt)
+	if err != nil {
+		return err
+	}
+
+	for _, deltaRepo := range deltaRepos {
+		fmt.Printf("%s references the following changed/deleted definitions:\n", bold(cyan(deltaRepo.Repo.URI)))
+		for _, defRef := range deltaRepo.DefRefs {
+			fmt.Printf("    %s\n", fmtDeltaDefName(defRef.Def))
+			seenFiles := map[string]bool{}
+			for _, ref := range defRef.Refs {
+				if seenFiles[ref.File] {
+					continue
+				}
+				seenFiles[ref.File] = true
+				fmt.Printf("      - %s\n", ref.File)
+			}
 		}
 		fmt.Println()
 	}
