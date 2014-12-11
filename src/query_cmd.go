@@ -35,6 +35,7 @@ type QueryCmd struct {
 	AddDeps  bool   `long:"add-deps" description:"add dependency repos to remote if not present (specify this if you get a 'repo not found' error)"`
 	RepoURI  string `short:"r" long:"repo" description:"repository URI (defaults to current VCS repository 'srclib' or 'origin' remote URL)" required:"yes"`
 	CommitID string `short:"c" long:"commit" description:"commit ID of repository to search (defaults to current repository's commit if build data is present, otherwise newest built remote commit on default branch)"`
+	Refs     bool   `short:"x" long:"refs" description:"show references/examples"`
 }
 
 var queryCmd QueryCmd
@@ -153,12 +154,6 @@ func (c *QueryCmd) Execute(args []string) error {
 			continue
 		}
 		seen[seenKey] = true
-
-		// Fetch docs and stats.
-		def, _, err = cl.Defs.Get(def.DefSpec(), &sourcegraph.DefGetOptions{Doc: true})
-		if err != nil {
-			return err
-		}
 
 		if f := def.FmtStrings; f != nil {
 			fromDep := !graph.URIEqual(def.Repo, c.RepoURI)
