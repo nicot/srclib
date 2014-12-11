@@ -9,11 +9,13 @@ import (
 	"strings"
 
 	"github.com/kr/fs"
+	"github.com/kr/text"
 
 	"sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
 	"sourcegraph.com/sourcegraph/srclib/buildstore"
 	"sourcegraph.com/sourcegraph/srclib/dep"
 	"sourcegraph.com/sourcegraph/srclib/graph"
+	"sourcegraph.com/sourcegraph/vcsstore/vcsclient"
 )
 
 func init() {
@@ -32,10 +34,11 @@ func init() {
 }
 
 type QueryCmd struct {
-	AddDeps  bool   `long:"add-deps" description:"add dependency repos to remote if not present (specify this if you get a 'repo not found' error)"`
-	RepoURI  string `short:"r" long:"repo" description:"repository URI (defaults to current VCS repository 'srclib' or 'origin' remote URL)" required:"yes"`
-	CommitID string `short:"c" long:"commit" description:"commit ID of repository to search (defaults to current repository's commit if build data is present, otherwise newest built remote commit on default branch)"`
-	Refs     bool   `short:"x" long:"refs" description:"show references/examples"`
+	AddDeps      bool   `long:"add-deps" description:"add dependency repos to remote if not present (specify this if you get a 'repo not found' error)"`
+	RepoURI      string `short:"r" long:"repo" description:"repository URI (defaults to current VCS repository 'srclib' or 'origin' remote URL)" required:"yes"`
+	CommitID     string `short:"c" long:"commit" description:"commit ID of repository to search (defaults to current repository's commit if build data is present, otherwise newest built remote commit on default branch)"`
+	Refs         int    `short:"x" long:"refs" description:"show this many references/examples"`
+	ContextLines int    `short:"L" long:"context-lines" description:"number of surrounding context lines to show in ref/example code snippets" default:"3"`
 }
 
 var queryCmd QueryCmd
@@ -188,12 +191,54 @@ func (c *QueryCmd) Execute(args []string) error {
 
 		src := fmt.Sprintf("@ %s : %s", def.Repo, def.File)
 
+		// TODO(sqs): we'd need to fetch the def separately to get
+		// stats; stats are not included in the search result.
 		var stat string
 		if def.RRefs() > 0 || def.XRefs() > 0 {
 			stat = fmt.Sprintf("%d xrefs %d rrefs", def.XRefs(), def.RRefs())
 		}
 
 		fmt.Printf("%-50s %s\n", fade(src), fade(stat))
+
+		if c.Refs > 0 {
+			opt := &sourcegraph.DefListRefsOptions{ListOptions: sourcegraph.ListOptions{PerPage: c.Refs}}
+			xs, _, err := cl.Defs.ListRefs(def.DefSpec(), opt)
+			if err != nil {
+				return err
+			}
+			fmt.Println()
+			for _, x := range xs {
+				fmt.Printf(fade("\tRef @ %s : %s\n"), x.Repo, x.File)
+				entrySpec := sourcegraph.TreeEntrySpec{
+					RepoRev: sourcegraph.RepoRevSpec{
+						RepoSpec: sourcegraph.RepoSpec{URI: x.Repo},
+						Rev:      x.CommitID,
+						CommitID: x.CommitID,
+					},
+					Path: x.File,
+				}
+				opt := &sourcegraph.RepoTreeGetOptions{
+					GetFileOptions: vcsclient.GetFileOptions{
+						FileRange:          vcsclient.FileRange{StartByte: x.Start, EndByte: x.End},
+						ExpandContextLines: c.ContextLines,
+						FullLines:          true,
+					},
+				}
+				entry, _, err := cl.RepoTree.Get(entrySpec, opt)
+				if err != nil {
+					log.Printf("Error fetching example in %s at %s. Skipping.", x.Repo, x.File)
+					if GlobalOpt.Verbose {
+						log.Println(err)
+					}
+					continue
+				}
+
+				entry.Contents = bytes.Replace(entry.Contents, []byte(def.Name), []byte(bold(yellow(def.Name))), -1)
+				fmt.Println(text.Indent(string(entry.Contents), "\t"))
+
+				fmt.Println()
+			}
+		}
 
 		fmt.Println()
 	}
