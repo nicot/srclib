@@ -94,7 +94,7 @@ func (c *QueryCmd) Execute(args []string) error {
 	// Check if the commit has build data on the server. If commitID
 	// == "", this will check the default branch.
 	repoRevSpec := sourcegraph.RepoRevSpec{RepoSpec: sourcegraph.RepoSpec{URI: c.RepoURI}, Rev: commitID}
-	b, _, err := cl.Repos.GetBuild(repoRevSpec, &sourcegraph.RepoGetBuildOptions{Exact: true})
+	b, _, err := cl.Repos.GetBuild(repoRevSpec, &sourcegraph.RepoGetBuildOptions{Exact: false})
 	if err != nil {
 		return err
 	}
@@ -103,7 +103,9 @@ func (c *QueryCmd) Execute(args []string) error {
 	} else if b.LastSuccessfulCommit == nil {
 		log.Printf("# Warning: no search index for %s because it has no successful remote builds.", c.RepoURI)
 	} else {
-		log.Printf("# Searching in commit %s (%d commits behind) because commit %s is not built.", b.LastSuccessfulCommit.ID, b.CommitsBehind, commitID)
+		if GlobalOpt.Verbose {
+			log.Printf("# Searching in commit %s (%d commits behind) because commit %s is not built.", b.LastSuccessfulCommit.ID, b.CommitsBehind, commitID)
+		}
 		commitID = string(b.LastSuccessfulCommit.ID)
 	}
 
@@ -526,7 +528,7 @@ func listRepoDependencies(cl *sourcegraph.Client, repo *Repo, uri string) (map[d
 	// Unable to determine deps locally. Try looking them up on Sourcegraph.
 	var commitID string
 	repoRevSpec := sourcegraph.RepoRevSpec{RepoSpec: sourcegraph.RepoSpec{URI: uri}, Rev: repo.CommitID}
-	b, _, err := cl.Repos.GetBuild(repoRevSpec, &sourcegraph.RepoGetBuildOptions{Exact: true})
+	b, _, err := cl.Repos.GetBuild(repoRevSpec, &sourcegraph.RepoGetBuildOptions{Exact: false})
 	if err != nil {
 		return nil, err
 	}
@@ -534,11 +536,11 @@ func listRepoDependencies(cl *sourcegraph.Client, repo *Repo, uri string) (map[d
 		// The remote has a build for the commit we want.
 		commitID = repo.CommitID
 		if GlobalOpt.Verbose {
-			log.Printf("# Remote build #%d found for current commit %s.", b.Exact.BID, repo.CommitID)
+			log.Printf("# Remote build #%d found for exact current commit %s.", b.Exact.BID, repo.CommitID)
 		}
 	} else if b.LastSuccessfulCommit != nil {
 		if GlobalOpt.Verbose {
-			log.Printf("# Finding dependencies in commit %s (%d commits behind) because commit %s is not built.", b.LastSuccessfulCommit.ID, b.CommitsBehind, repo.CommitID)
+			log.Printf("# Finding dependencies in commit %s (%d commits behind, build #%d) because commit %s is not built.", b.LastSuccessfulCommit.ID, b.CommitsBehind, b.LastSuccessful.BID, repo.CommitID)
 		}
 		commitID = string(b.LastSuccessfulCommit.ID)
 	}
