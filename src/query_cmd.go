@@ -48,6 +48,8 @@ type QueryCmd struct {
 	Def          bool   `short:"d" long:"def" description:"show definitions"`
 	Refs         int    `short:"x" long:"refs" description:"show this many references/examples"`
 	ContextLines int    `short:"L" long:"context-lines" description:"number of surrounding context lines to show in ref/example code snippets" default:"3"`
+
+	Terse bool `short:"1" long:"terse" description:"terse output mode (one-line per def and ref result)"`
 }
 
 var queryCmd QueryCmd
@@ -278,47 +280,7 @@ func query(c *QueryCmd, cl *sourcegraph.Client, queryConstraints, queryString st
 		}
 		seen[seenKey] = true
 
-		if f := def.FmtStrings; f != nil {
-			fromDep := !graph.URIEqual(def.Repo, c.RepoURI)
-
-			kw := f.DefKeyword
-			if kw != "" {
-				kw += " "
-			}
-
-			var name string
-			if fromDep {
-				name = f.Name.LanguageWideQualified
-			} else {
-				name = f.Name.DepQualified
-			}
-
-			var typ string
-			if fromDep {
-				typ = f.Type.RepositoryWideQualified
-			} else {
-				typ = f.Type.DepQualified
-			}
-
-			fmt.Printf("%s%s%s%s\n", kw, bold(red(name)), f.NameAndTypeSeparator, bold(typ))
-		} else {
-			fmt.Printf("(unable to format: %s from %s)\n", def.Name, def.Repo)
-		}
-
-		if doc := strings.TrimSpace(stripHTML(def.DocHTML)); doc != "" {
-			fmt.Println(doc, "    ")
-		}
-
-		src := fmt.Sprintf("@ %s : %s", def.Repo, def.File)
-
-		// TODO(sqs): we'd need to fetch the def separately to get
-		// stats; stats are not included in the search result.
-		var stat string
-		if def.RRefs() > 0 || def.XRefs() > 0 {
-			stat = fmt.Sprintf("%d xrefs %d rrefs", def.XRefs(), def.RRefs())
-		}
-
-		fmt.Printf("%-50s %s\n", fade(src), fade(stat))
+		printDefSummary(c, def)
 
 		if c.Def {
 			// Show definition.
@@ -346,7 +308,9 @@ func query(c *QueryCmd, cl *sourcegraph.Client, queryConstraints, queryString st
 					log.Println(err)
 				}
 			}
-			fmt.Println()
+			if !c.Terse {
+				fmt.Println()
+			}
 		}
 
 		if c.Refs > 0 {
@@ -360,44 +324,129 @@ func query(c *QueryCmd, cl *sourcegraph.Client, queryConstraints, queryString st
 				log.Println()
 				continue
 			}
-			fmt.Println()
-			for _, x := range xs {
-				fmt.Printf(fade("\tRef @ %s : %s\n"), x.Repo, x.File)
-				entrySpec := sourcegraph.TreeEntrySpec{
-					RepoRev: sourcegraph.RepoRevSpec{
-						RepoSpec: sourcegraph.RepoSpec{URI: x.Repo},
-						Rev:      x.CommitID,
-						CommitID: x.CommitID,
-					},
-					Path: x.File,
-				}
-				opt := &sourcegraph.RepoTreeGetOptions{
-					GetFileOptions: vcsclient.GetFileOptions{
-						FileRange:          vcsclient.FileRange{StartByte: x.Start, EndByte: x.End},
-						ExpandContextLines: c.ContextLines,
-						FullLines:          true,
-					},
-				}
-				entry, _, err := cl.RepoTree.Get(entrySpec, opt)
-				if err != nil {
-					log.Printf("Error fetching example in %s at %s. Skipping.", x.Repo, x.File)
-					if GlobalOpt.Verbose {
-						log.Println(err)
-					}
-					log.Println()
-					continue
-				}
-
-				entry.Contents = bytes.Replace(entry.Contents, []byte(def.Name), []byte(bold(yellow(def.Name))), -1)
-				fmt.Println(text.Indent(string(entry.Contents), "\t"))
-
+			if !c.Terse {
 				fmt.Println()
+			}
+			for i, x := range xs {
+				if !c.Terse {
+					fmt.Print("\t")
+				}
+
+				var refLabel string
+				if i == 0 {
+					refLabel = "Ref"
+				} else {
+					refLabel = strings.Repeat(" ", len("Ref"))
+				}
+
+				var src string
+				fromDep := !graph.URIEqual(def.Repo, x.Repo)
+				if fromDep {
+					src = fmt.Sprintf("%s @ %s : %s", refLabel, x.Repo, x.File)
+				} else {
+					src = fmt.Sprintf("%s @ %s", refLabel, x.File)
+				}
+				fmt.Println(fade(src))
+
+				if !c.Terse {
+					entrySpec := sourcegraph.TreeEntrySpec{
+						RepoRev: sourcegraph.RepoRevSpec{
+							RepoSpec: sourcegraph.RepoSpec{URI: x.Repo},
+							Rev:      x.CommitID,
+							CommitID: x.CommitID,
+						},
+						Path: x.File,
+					}
+					opt := &sourcegraph.RepoTreeGetOptions{
+						GetFileOptions: vcsclient.GetFileOptions{
+							FileRange:          vcsclient.FileRange{StartByte: x.Start, EndByte: x.End},
+							ExpandContextLines: c.ContextLines,
+							FullLines:          true,
+						},
+					}
+					entry, _, err := cl.RepoTree.Get(entrySpec, opt)
+					if err != nil {
+						log.Printf("Error fetching example in %s at %s. Skipping.", x.Repo, x.File)
+						if GlobalOpt.Verbose {
+							log.Println(err)
+						}
+						log.Println()
+						continue
+					}
+
+					entry.Contents = bytes.Replace(entry.Contents, []byte(def.Name), []byte(bold(yellow(def.Name))), -1)
+					fmt.Println(text.Indent(string(entry.Contents), "\t"))
+
+					fmt.Println()
+				}
 			}
 		}
 
-		fmt.Println()
+		if !c.Terse || c.Refs > 0 {
+			fmt.Println()
+		}
 	}
 	return nil
+}
+
+func printDefSummary(c *QueryCmd, def *sourcegraph.Def) {
+	fromDep := !graph.URIEqual(def.Repo, c.RepoURI)
+
+	var title string
+	if f := def.FmtStrings; f != nil {
+
+		kw := f.DefKeyword
+		if kw != "" {
+			kw += " "
+		}
+
+		var name string
+		if fromDep {
+			name = f.Name.LanguageWideQualified
+		} else {
+			name = f.Name.DepQualified
+		}
+
+		var typ string
+		if fromDep {
+			typ = f.Type.RepositoryWideQualified
+		} else {
+			typ = f.Type.DepQualified
+		}
+
+		title = fmt.Sprintf("%s%s%s%s", kw, bold(red(name)), f.NameAndTypeSeparator, bold(typ))
+	} else {
+		if GlobalOpt.Verbose {
+			log.Printf("No def format strings found for def %v.", def.DefKey)
+		}
+		title = fmt.Sprintf("%s: %s", def.Unit, def.Name)
+	}
+
+	var src string
+	if fromDep {
+		src = fmt.Sprintf("@ %s : %s", def.Repo, def.File)
+	} else {
+		src = fmt.Sprintf("@ %s", def.File)
+	}
+
+	if c.Terse {
+		fmt.Println(title, src)
+	} else {
+		fmt.Println(title)
+
+		if doc := strings.TrimSpace(stripHTML(def.DocHTML)); doc != "" {
+			fmt.Println(text.Indent(doc, "    "))
+		}
+
+		// TODO(sqs): we'd need to fetch the def separately to get
+		// stats; stats are not included in the search result.
+		var stat string
+		if def.RRefs() > 0 || def.XRefs() > 0 {
+			stat = fmt.Sprintf("%d xrefs %d rrefs", def.XRefs(), def.RRefs())
+		}
+
+		fmt.Printf("%-50s %s\n", fade(src), fade(stat))
+	}
 }
 
 func stripHTML(html string) string {
