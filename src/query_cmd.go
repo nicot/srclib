@@ -295,6 +295,11 @@ func query(c *QueryCmd, cl *sourcegraph.Client, queryConstraints, queryString st
 	}
 	defs := res.Defs
 
+	if len(defs) == 0 {
+		fmt.Printf(red("No results for: %s\n"), queryString)
+		return nil
+	}
+
 	// HACK: until we get the indexed_globally fix in, filter out dupes
 	seen := map[string]bool{}
 
