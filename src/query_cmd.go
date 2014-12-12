@@ -3,7 +3,6 @@ package src
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -55,50 +54,20 @@ var queryCmd QueryCmd
 
 func (c *QueryCmd) Execute(args []string) error {
 	repo := openCurrentRepo()
-	buildStore, err := buildstore.LocalRepo(repo.RootDir)
-	if err != nil {
-		return err
-	}
-	commitFS := buildStore.Commit(repo.CommitID)
-	exists, err := buildstore.BuildDataExistsForCommit(buildStore, repo.CommitID)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return errors.New("No build data found. Try running `src config` first.")
-	}
 
 	cl := NewAPIClientWithAuthIfPresent()
 
-	repoAndDepURIs := []string{c.RepoURI}
-
-	// Read deps.
-	depSuffix := buildstore.DataTypeSuffix([]*dep.ResolvedDep{})
-	w := fs.WalkFS(".", commitFS)
+	depTargets, err := listRepoDependencies(cl, repo, c.RepoURI)
+	if err != nil {
+		return err
+	}
 	seenDepURI := map[string]bool{}
-	depTargets := map[dep.ResolvedTarget]struct{}{}
-	for w.Step() {
-		depfile := w.Path()
-		if strings.HasSuffix(depfile, depSuffix) {
-			var deps []*dep.Resolution
-			f, err := commitFS.Open(depfile)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			if err := json.NewDecoder(f).Decode(&deps); err != nil {
-				return fmt.Errorf("%s: %s", depfile, err)
-			}
-			for _, d := range deps {
-				if d.Target != nil && d.Target.ToRepoCloneURL != "" {
-					depURI := graph.MakeURI(d.Target.ToRepoCloneURL)
-					depTargets[*d.Target] = struct{}{}
-					if !seenDepURI[depURI] {
-						repoAndDepURIs = append(repoAndDepURIs, depURI)
-						seenDepURI[depURI] = true
-					}
-				}
-			}
+	repoAndDepURIs := []string{c.RepoURI}
+	for d := range depTargets {
+		uri := graph.MakeURI(d.ToRepoCloneURL)
+		if !seenDepURI[uri] {
+			repoAndDepURIs = append(repoAndDepURIs, uri)
+			seenDepURI[uri] = true
 		}
 	}
 
@@ -131,7 +100,6 @@ func (c *QueryCmd) Execute(args []string) error {
 	} else if b.LastSuccessfulCommit == nil {
 		log.Printf("# Warning: no search index for %s because it has no successful remote builds.", c.RepoURI)
 	} else {
-
 		log.Printf("# Searching in commit %s (%d commits behind) because commit %s is not built.", b.LastSuccessfulCommit.ID, b.CommitsBehind, commitID)
 		commitID = string(b.LastSuccessfulCommit.ID)
 	}
@@ -435,4 +403,96 @@ func query(c *QueryCmd, cl *sourcegraph.Client, queryConstraints, queryString st
 func stripHTML(html string) string {
 	s := strings.Replace(strings.Replace(html, "<p>", "", -1), "</p>", "", -1)
 	return strings.Replace(s, "\n\n", "\n", -1)
+}
+
+// listRepoDependencies determines the dependencies of the current
+// repo either by looking them up in the depresolve build data files
+// locally or by querying the Sourcegraph API.
+func listRepoDependencies(cl *sourcegraph.Client, repo *Repo, uri string) (map[dep.ResolvedTarget]struct{}, error) {
+	depTargets := map[dep.ResolvedTarget]struct{}{}
+
+	tryLocal := repo != nil && repo.URI() == uri
+
+	// Try determining dependencies locally.
+	if tryLocal {
+		buildStore, err := buildstore.LocalRepo(repo.RootDir)
+		if err != nil {
+			return nil, err
+		}
+		commitFS := buildStore.Commit(repo.CommitID)
+		exists, err := buildstore.BuildDataExistsForCommit(buildStore, repo.CommitID)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			depSuffix := buildstore.DataTypeSuffix([]*dep.ResolvedDep{})
+			w := fs.WalkFS(".", commitFS)
+			hasDepResolveFile := false
+			for w.Step() {
+				depfile := w.Path()
+				if strings.HasSuffix(depfile, depSuffix) {
+					var deps []*dep.Resolution
+					f, err := commitFS.Open(depfile)
+					if err != nil {
+						return nil, err
+					}
+					defer f.Close()
+					if err := json.NewDecoder(f).Decode(&deps); err != nil {
+						return nil, fmt.Errorf("%s: %s", depfile, err)
+					}
+					hasDepResolveFile = true
+					for _, d := range deps {
+						if d.Target != nil && d.Target.ToRepoCloneURL != "" {
+							depTargets[*d.Target] = struct{}{}
+						}
+					}
+				}
+			}
+			if hasDepResolveFile {
+				if GlobalOpt.Verbose {
+					log.Printf("# Found %d resolved deps locally.", len(depTargets))
+				}
+				return depTargets, nil
+			}
+		}
+	}
+
+	// Unable to determine deps locally. Try looking them up on Sourcegraph.
+	var commitID string
+	repoRevSpec := sourcegraph.RepoRevSpec{RepoSpec: sourcegraph.RepoSpec{URI: uri}, Rev: repo.CommitID}
+	b, _, err := cl.Repos.GetBuild(repoRevSpec, &sourcegraph.RepoGetBuildOptions{Exact: true})
+	if err != nil {
+		return nil, err
+	}
+	if b.Exact != nil && b.Exact.CommitID == repo.CommitID {
+		// The remote has a build for the commit we want.
+		commitID = repo.CommitID
+		if GlobalOpt.Verbose {
+			log.Printf("# Remote build #%d found for current commit %s.", b.Exact.BID, repo.CommitID)
+		}
+	} else if b.LastSuccessfulCommit != nil {
+		if GlobalOpt.Verbose {
+			log.Printf("# Finding dependencies in commit %s (%d commits behind) because commit %s is not built.", b.LastSuccessfulCommit.ID, b.CommitsBehind, repo.CommitID)
+		}
+		commitID = string(b.LastSuccessfulCommit.ID)
+	}
+
+	if commitID != "" {
+		deps, _, err := cl.Repos.ListDependencies(repoRevSpec, &sourcegraph.RepoListDependenciesOptions{
+			ListOptions: sourcegraph.ListOptions{PerPage: 50},
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, d := range deps {
+			tgt := dep.ResolvedTarget{ToRepoCloneURL: d.ToRepo}
+			depTargets[tgt] = struct{}{}
+		}
+		if GlobalOpt.Verbose {
+			log.Printf("# Found %d dependencies on remote.", len(depTargets))
+		}
+		return depTargets, nil
+	}
+
+	return nil, fmt.Errorf("No dependencies found for repo %s commit %s. Try running `src config && src make` to build this commit locally, or run `src remote build` to trigger a build on Sourcegraph.", uri, repo.CommitID)
 }
