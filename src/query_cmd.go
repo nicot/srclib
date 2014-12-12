@@ -48,6 +48,7 @@ type QueryCmd struct {
 	Def          bool   `short:"d" long:"def" description:"show definitions"`
 	Refs         int    `short:"x" long:"refs" description:"show this many references/examples"`
 	ContextLines int    `short:"L" long:"context-lines" description:"number of surrounding context lines to show in ref/example code snippets" default:"3"`
+	Authors      bool   `short:"A" long:"authors" description:"show authors/committers of each def"`
 
 	Terse bool `short:"1" long:"terse" description:"terse output mode (one-line per def and ref result)"`
 }
@@ -310,6 +311,22 @@ func query(c *QueryCmd, cl *sourcegraph.Client, queryConstraints, queryString st
 			}
 			if !c.Terse {
 				fmt.Println()
+			}
+		}
+
+		if c.Authors {
+			opt := &sourcegraph.DefListAuthorsOptions{ListOptions: sourcegraph.ListOptions{PerPage: 50}}
+			authors, _, err := cl.Defs.ListAuthors(def.DefSpec(), opt)
+			if err == nil {
+				for _, a := range authors {
+					fmt.Println(a.AuthorEmail)
+				}
+			} else {
+				log.Printf("Error listing authors for %s in %s unit %s. Skipping.", def.Path, def.Repo, def.Unit)
+				if GlobalOpt.Verbose {
+					log.Println(err)
+				}
+				log.Println()
 			}
 		}
 
