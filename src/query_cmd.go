@@ -198,9 +198,12 @@ func (c *QueryCmd) Execute(args []string) error {
 				return
 			}
 
+			repoRev := graph.MakeURI(dt.ToRepoCloneURL)
+			if b.LastSuccessful.CommitID != "" {
+				repoRev += "@" + b.LastSuccessful.CommitID
+			}
 			defs, _, err := cl.Defs.List(&sourcegraph.DefListOptions{
-				Repos:       []string{graph.MakeURI(dt.ToRepoCloneURL)},
-				CommitID:    b.LastSuccessful.CommitID,
+				RepoRevs:    []string{repoRev},
 				UnitTypes:   []string{dt.ToUnitType},
 				Unit:        dt.ToUnit,
 				Exported:    true,
