@@ -457,6 +457,9 @@ func printDefSummary(c *QueryCmd, def *sourcegraph.Def) {
 			fmt.Println(text.Indent(doc, "    "))
 		}
 
+		u := getEndpointURL()
+		fmt.Printf("    > %s://%s/%s/.%s/%s\n", u.Scheme, u.Host, def.Repo, def.UnitType, filepath.Join(def.Unit, ".def", string(def.Path)))
+
 		// TODO(sqs): we'd need to fetch the def separately to get
 		// stats; stats are not included in the search result.
 		var stat string
