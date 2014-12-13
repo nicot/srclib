@@ -3,6 +3,7 @@ package src
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -19,6 +20,7 @@ import (
 	"github.com/kr/text"
 
 	"sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
+	"sourcegraph.com/sourcegraph/rwvfs"
 	"sourcegraph.com/sourcegraph/srclib/buildstore"
 	"sourcegraph.com/sourcegraph/srclib/dep"
 	"sourcegraph.com/sourcegraph/srclib/graph"
@@ -191,7 +193,7 @@ func (c *QueryCmd) Execute(args []string) error {
 				return
 			}
 			if GlobalOpt.Verbose {
-				log.Println("Got completions for", dt.ToRepoCloneURL, dt.ToUnitType)
+				log.Println("Got completions for", dt.ToRepoCloneURL, dt.ToUnitType, dt.ToUnit)
 			}
 			for _, def := range defs {
 				compc <- def.Name
@@ -476,93 +478,107 @@ func stripHTML(html string) string {
 	return strings.Replace(s, "\n\n", "\n", -1)
 }
 
+func readDepsFromBuildStore(bdfs rwvfs.FileSystem) (map[dep.ResolvedTarget]struct{}, error) {
+	depTargets := map[dep.ResolvedTarget]struct{}{}
+	depSuffix := buildstore.DataTypeSuffix([]*dep.ResolvedDep{})
+	w := fs.WalkFS(".", rwvfs.Walkable(bdfs))
+	hasDepResolveFile := false
+	for w.Step() {
+		depfile := w.Path()
+		if strings.HasSuffix(depfile, depSuffix) {
+			var deps []*dep.Resolution
+			f, err := bdfs.Open(depfile)
+			if err != nil {
+				return nil, err
+			}
+			defer f.Close()
+			if err := json.NewDecoder(f).Decode(&deps); err != nil {
+				return nil, fmt.Errorf("%s: %s", depfile, err)
+			}
+			hasDepResolveFile = true
+			for _, d := range deps {
+				if d.Target != nil && d.Target.ToRepoCloneURL != "" {
+					depTargets[*d.Target] = struct{}{}
+				}
+			}
+		}
+	}
+	if hasDepResolveFile {
+		return depTargets, nil
+	}
+	return nil, errNoDepResolveFiles
+}
+
+var errNoDepResolveFiles = errors.New("no depresolve build data files found")
+
+// if hasDepResolveFile {
+// 	if GlobalOpt.Verbose {
+// 		log.Printf("# Found %d resolved deps locally.", len(depTargets))
+// 	}
+// 	return depTargets, nil
+// }
+
 // listRepoDependencies determines the dependencies of the current
 // repo either by looking them up in the depresolve build data files
 // locally or by querying the Sourcegraph API.
 func listRepoDependencies(cl *sourcegraph.Client, repo *Repo, uri string) (map[dep.ResolvedTarget]struct{}, error) {
-	depTargets := map[dep.ResolvedTarget]struct{}{}
-
 	tryLocal := repo != nil && repo.URI() == uri
 
 	// Try determining dependencies locally.
 	if tryLocal {
-		buildStore, err := buildstore.LocalRepo(repo.RootDir)
+		bdfs, err := buildstore.LocalRepo(repo.RootDir)
 		if err != nil {
 			return nil, err
 		}
-		commitFS := buildStore.Commit(repo.CommitID)
-		exists, err := buildstore.BuildDataExistsForCommit(buildStore, repo.CommitID)
-		if err != nil {
+		depTargets, err := readDepsFromBuildStore(bdfs.Commit(repo.CommitID))
+		if err != nil && err != errNoDepResolveFiles {
 			return nil, err
 		}
-		if exists {
-			depSuffix := buildstore.DataTypeSuffix([]*dep.ResolvedDep{})
-			w := fs.WalkFS(".", commitFS)
-			hasDepResolveFile := false
-			for w.Step() {
-				depfile := w.Path()
-				if strings.HasSuffix(depfile, depSuffix) {
-					var deps []*dep.Resolution
-					f, err := commitFS.Open(depfile)
-					if err != nil {
-						return nil, err
-					}
-					defer f.Close()
-					if err := json.NewDecoder(f).Decode(&deps); err != nil {
-						return nil, fmt.Errorf("%s: %s", depfile, err)
-					}
-					hasDepResolveFile = true
-					for _, d := range deps {
-						if d.Target != nil && d.Target.ToRepoCloneURL != "" {
-							depTargets[*d.Target] = struct{}{}
-						}
-					}
-				}
+		if err == nil {
+			if GlobalOpt.Verbose {
+				log.Printf("# Found %d dependencies locally.", len(depTargets))
 			}
-			if hasDepResolveFile {
-				if GlobalOpt.Verbose {
-					log.Printf("# Found %d resolved deps locally.", len(depTargets))
-				}
-				return depTargets, nil
-			}
+			return depTargets, nil
 		}
 	}
 
 	// Unable to determine deps locally. Try looking them up on Sourcegraph.
-	var commitID string
 	repoRevSpec := sourcegraph.RepoRevSpec{RepoSpec: sourcegraph.RepoSpec{URI: uri}, Rev: repo.CommitID}
 	b, _, err := cl.Repos.GetBuild(repoRevSpec, &sourcegraph.RepoGetBuildOptions{Exact: false})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting build for repo %s commit %s: %s", uri, repo.CommitID, err)
 	}
-	if b.Exact != nil && b.Exact.CommitID == repo.CommitID {
-		// The remote has a build for the commit we want.
-		commitID = repo.CommitID
-		if GlobalOpt.Verbose {
-			log.Printf("# Remote build #%d found for exact current commit %s.", b.Exact.BID, repo.CommitID)
+	if b.LastSuccessful != nil {
+		if b.LastSuccessful.CommitID == repo.CommitID {
+			// The remote has a build for the commit we want.
+			repoRevSpec.CommitID = repo.CommitID
+			if GlobalOpt.Verbose {
+				log.Printf("# Remote build #%d found for exact current commit %s.", b.Exact.BID, repo.CommitID)
+			}
+		} else {
+			if GlobalOpt.Verbose {
+				log.Printf("# Finding dependencies in commit %s (%d commits behind, build #%d) because commit %s is not built.", b.LastSuccessfulCommit.ID, b.CommitsBehind, b.LastSuccessful.BID, repo.CommitID)
+			}
+			repoRevSpec.CommitID = string(b.LastSuccessfulCommit.ID)
 		}
-	} else if b.LastSuccessfulCommit != nil {
-		if GlobalOpt.Verbose {
-			log.Printf("# Finding dependencies in commit %s (%d commits behind, build #%d) because commit %s is not built.", b.LastSuccessfulCommit.ID, b.CommitsBehind, b.LastSuccessful.BID, repo.CommitID)
-		}
-		commitID = string(b.LastSuccessfulCommit.ID)
 	}
+	repoRevSpec.Rev = repoRevSpec.CommitID
 
-	if commitID != "" {
-		deps, _, err := cl.Repos.ListDependencies(repoRevSpec, &sourcegraph.RepoListDependenciesOptions{
-			ListOptions: sourcegraph.ListOptions{PerPage: 50},
-		})
+	if repoRevSpec.CommitID != "" {
+		bdfs, err := cl.BuildData.FileSystem(repoRevSpec)
 		if err != nil {
 			return nil, err
 		}
-		for _, d := range deps {
-			tgt := dep.ResolvedTarget{ToRepoCloneURL: d.ToRepo}
-			depTargets[tgt] = struct{}{}
+		depTargets, err := readDepsFromBuildStore(bdfs)
+		if err != nil && err != errNoDepResolveFiles {
+			return nil, err
 		}
-		if GlobalOpt.Verbose {
-			log.Printf("# Found %d dependencies on remote.", len(depTargets))
+		if err == nil {
+			if GlobalOpt.Verbose {
+				log.Printf("# Found %d dependencies remotely.", len(depTargets))
+			}
+			return depTargets, nil
 		}
-		return depTargets, nil
 	}
 
 	return nil, fmt.Errorf("No dependencies found for repo %s commit %s. Try running `src config && src make` to build this commit locally, or run `src remote build` to trigger a build on Sourcegraph.", uri, repo.CommitID)
