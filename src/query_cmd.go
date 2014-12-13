@@ -511,13 +511,6 @@ func readDepsFromBuildStore(bdfs rwvfs.FileSystem) (map[dep.ResolvedTarget]struc
 
 var errNoDepResolveFiles = errors.New("no depresolve build data files found")
 
-// if hasDepResolveFile {
-// 	if GlobalOpt.Verbose {
-// 		log.Printf("# Found %d resolved deps locally.", len(depTargets))
-// 	}
-// 	return depTargets, nil
-// }
-
 // listRepoDependencies determines the dependencies of the current
 // repo either by looking them up in the depresolve build data files
 // locally or by querying the Sourcegraph API.
@@ -581,5 +574,5 @@ func listRepoDependencies(cl *sourcegraph.Client, repo *Repo, uri string) (map[d
 		}
 	}
 
-	return nil, fmt.Errorf("No dependencies found for repo %s commit %s. Try running `src config && src make` to build this commit locally, or run `src remote build` to trigger a build on Sourcegraph.", uri, repo.CommitID)
+	return nil, fmt.Errorf("No dependencies found for repo %s commit %s. Try running `src config && src make` to build this commit locally, or run `src remote build` to trigger a build on Sourcegraph.", uri, repoRevSpec.CommitID)
 }
