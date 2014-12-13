@@ -75,6 +75,7 @@ func (c *QueryCmd) Execute(args []string) error {
 			seenDepURI[uri] = true
 		}
 	}
+	depTargets[dep.ResolvedTarget{ToRepoCloneURL: c.RepoURI}] = struct{}{}
 
 	if c.AddDeps {
 		// Ensure all dep repos are added.
