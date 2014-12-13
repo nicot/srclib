@@ -466,7 +466,6 @@ func uploadFile(local vfs.FileSystem, remote rwvfs.FileSystem, path string, fi o
 	if err != nil {
 		return err
 	}
-	defer rf.Close()
 
 	if _, err := io.Copy(rf, lf); err != nil {
 		return err
