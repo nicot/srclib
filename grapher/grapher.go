@@ -29,6 +29,14 @@ type Output struct {
 	Anns []*ann.Ann   `json:",omitempty"`
 }
 
+type OffsetType int
+
+const (
+	OffsetUnspecified OffsetType = iota
+	OffsetChar                   = iota
+	OffsetByte                   = iota
+)
+
 // END Output OMIT
 
 // TODO(sqs): add grapher validation of output
@@ -101,14 +109,26 @@ func sortedOutput(o *Output) *Output {
 }
 
 // NormalizeData sorts data and performs other postprocessing.
-func NormalizeData(unitType, dir string, o *Output) error {
+func NormalizeData(offsetType OffsetType, unitType, dir string, o *Output) error {
 	for _, ref := range o.Refs {
 		if ref.DefRepo != "" {
 			ref.DefRepo = graph.MakeURI(string(ref.DefRepo))
 		}
 	}
 
-	if unitType != "GoPackage" && unitType != "Dockerfile" && !strings.HasPrefix(unitType, "Java") {
+	var convertOffsets bool
+
+	if offsetType == OffsetChar {
+		convertOffsets = true
+	} else if offsetType == OffsetByte {
+		convertOffsets = false
+	} else {
+		convertOffsets = (unitType != "GoPackage" &&
+			unitType != "Dockerfile" &&
+			!strings.HasPrefix(unitType, "Java"))
+	}
+
+	if convertOffsets {
 		ensureOffsetsAreByteOffsets(dir, o)
 	}
 
