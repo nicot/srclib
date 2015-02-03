@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/fsouza/go-dockerclient"
+
+	"sourcegraph.com/sourcegraph/srclib"
 )
 
 // Info describes a toolchain.
@@ -219,4 +221,35 @@ func (t *dockerToolchain) Command() (*exec.Cmd, error) {
 	// to the run options below.
 	cmd := exec.Command("docker", "run", "--memory=4g", "-i", "--volume="+t.hostVolumeDir+":/src:ro", t.imageName)
 	return cmd, nil
+}
+
+// TODO Lookup the toolchain directly from the file system instead of calling List().
+func LookupConfig (r *srclib.ToolRef) (*ToolInfo, error) {
+	subcmd := r.Subcmd
+
+	infos, err := List()
+	if err != nil {
+		return nil, err
+	}
+
+	for _,info := range infos {
+		if info.Path != r.Toolchain {
+			continue
+		}
+
+		config, err := info.ReadConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		for _, tool := range config.Tools {
+			if tool.Subcmd != subcmd {
+				continue
+			}
+
+			return tool, nil;
+		}
+	}
+
+	return nil, nil
 }

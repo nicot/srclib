@@ -34,6 +34,11 @@ type ToolInfo struct {
 	// TODO(sqs): determine how repository- or directory-level tools will be
 	// defined.
 	SourceUnitTypes []string `json:",omitempty"`
+
+	// This is the type of offset that the grapher outputs. It should be
+	// either "character", "byte", "unspecified" or empty. Empty is equivalent
+	// to "unspecified".
+	OffsetType string `json:",omitempty"`
 }
 
 // ListTools lists all tools in all available toolchains (returned by List). If

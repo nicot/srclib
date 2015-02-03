@@ -56,9 +56,24 @@ func (r *GraphUnitRule) Prereqs() []string {
 }
 
 func (r *GraphUnitRule) Recipes() []string {
-	return []string{
-		fmt.Sprintf("src tool %s %q %q < $< | src internal normalize-graph-data --unit-type %q --dir . 1> $@", r.opt.ToolchainExecOpt, r.Tool.Toolchain, r.Tool.Subcmd, r.Unit.Type),
+	f := "src tool %s %q %q < $< | src internal normalize-graph-data --unit-type %q --dir . 1> $@"
+	tool := r.Tool
+	rule := fmt.Sprintf(f, r.opt.ToolchainExecOpt, tool.Toolchain, tool.Subcmd, r.Unit.Type)
+
+	if toolInfo, err := toolchain.LookupConfig(tool); err == nil {
+
+		// TODO Grab the offset type from the toolchain info.
+		oty := toolInfo.OffsetType
+		if oty == "" {
+			return []string{ rule }
+		}
+
+		return []string{
+			fmt.Sprintf("%s --offset-type %s", rule, oty),
+		}
 	}
+
+	return []string{ rule }
 }
 
 func (r *GraphUnitRule) SourceUnit() *unit.SourceUnit { return r.Unit }
