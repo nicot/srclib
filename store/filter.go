@@ -449,7 +449,9 @@ func (f byDefKeyFilter) ByUnits() []unit.ID2 {
 }
 func (f byDefKeyFilter) ByDefPath() string { return f.key.Path }
 func (f byDefKeyFilter) SelectDef(def *graph.Def) bool {
-	return f.key.Equals(&def.DefKey)
+	return (def.Repo == "" || def.Repo == f.key.Repo) && (def.CommitID == "" || def.CommitID == f.key.CommitID) &&
+		(def.UnitType == "" || def.UnitType == f.key.UnitType) && (def.Unit == "" || def.Unit == f.key.Unit) &&
+		def.Path == f.key.Path
 }
 
 // ByRefDefFilter is implemented by filters that restrict their

@@ -16,9 +16,7 @@
 		Def
 		DefDoc
 */
-package graph
-
-import "encoding/json"
+package graph;import "encoding/json"
 
 import proto "github.com/gogo/protobuf/proto"
 import math "math"
@@ -75,20 +73,11 @@ type DefKey struct {
 	// def hierarchy). See Def.TreePath instead.
 	Path string `protobuf:"bytes,5,opt,name=path" json:"Path"`
 }
-
 // END DefKey OMIT
 
 func (m *DefKey) Reset()         { *m = DefKey{} }
 func (m *DefKey) String() string { return proto.CompactTextString(m) }
-
-func (m *DefKey) Equals(key *DefKey) bool {
-	return (key.Repo == "" || m.Repo == "" || key.Repo == m.Repo) &&
-		(key.CommitID == "" || m.CommitID == "" || key.CommitID == m.CommitID) &&
-		(key.UnitType == "" || m.UnitType == "" || key.UnitType == m.UnitType) &&
-		(key.Unit == "" || m.Unit == "" || key.Unit == m.Unit) && key.Path == m.Path
-}
-
-func (*DefKey) ProtoMessage() {}
+func (*DefKey) ProtoMessage()    {}
 
 // START Def OMIT
 // Def is a definition in code.
@@ -144,7 +133,6 @@ type Def struct {
 	// The following regex captures the children of a tree-path X: X(/-[^/]*)*(/[^/-][^/]*)
 	TreePath string `protobuf:"bytes,17,opt,name=tree_path" json:"TreePath,omitempty"`
 }
-
 // END Def OMIT
 
 func (m *Def) Reset()         { *m = Def{} }
