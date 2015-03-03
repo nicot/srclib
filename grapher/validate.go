@@ -34,6 +34,21 @@ func ValidateDefs(defs []*graph.Def) (errs MultiError) {
 	return
 }
 
+func ValidateDocs(docs []*graph.Doc) (errs MultiError) {
+	docKeys := make(map[graph.DocKey]struct{})
+	for _, doc := range docs {
+		key := doc.Key()
+		if _, in := docKeys[key]; in {
+			errs = append(errs, fmt.Errorf("duplicate doc key: %+v", key))
+		} else {
+			docKeys[key] = struct{}{}
+		}
+		// TODO(samer): check that Start and End do not equal each
+		// other if DefKey is empty in linter.
+	}
+	return
+}
+
 type MultiError []error
 
 func (e MultiError) Error() string {
@@ -82,7 +97,7 @@ func UnresolvedInternalRefs(currentRepoURI string, refs []*graph.Ref, defs []*gr
 // PopulateImpliedFields fills in fields on graph data objects that
 // individual toolchains leave blank but that are implied by the
 // source unit the graph data objects were built from.
-func PopulateImpliedFields(repo, commitID, unitType, unit string, o *Output) {
+func PopulateImpliedFields(repo, commitID, unitType, unit string, o *graph.Output) {
 	for _, def := range o.Defs {
 		def.UnitType = unitType
 		def.Unit = unit

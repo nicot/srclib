@@ -1,26 +1,30 @@
 package graph
 
-// START Doc OMIT
-// Docstring
-type Doc struct {
-	// A link to the definition that this docstring describes
-	DefKey
+import "encoding/json"
 
-	// The MIME-type that the documentation is stored in. Valid formats include 'text/html', 'text/plain', 'text/x-markdown', text/x-rst'
-	Format string
-
-	// The actual documentation text
-	Data string
-
-	// Location where the docstring was extracted from. Leave blank for undefined location
-	File  string
-	Start int
-	End   int
+// Key returns the unique key for the doc.
+func (d *Doc) Key() DocKey {
+	return DocKey{DefKey: d.DefKey, Format: d.Format, Start: d.Start, File: d.File}
 }
 
-// END Doc OMIT
+// DocKey is the unique key for a doc. Each doc within a source unit
+// must have a unique DocKey.
+//
+// Freestanding comments will not have an associated DefKey, but they
+// *must* provide 'Start' and 'File'.
+type DocKey struct {
+	DefKey
+	Format string
+	File   string
+	Start  uint32
+}
 
-func (d *Doc) sortKey() string { return d.DefKey.String() }
+func (d DocKey) String() string {
+	b, _ := json.Marshal(d)
+	return string(b)
+}
+
+func (d *Doc) sortKey() string { return d.Key().String() }
 
 // Sorting
 

@@ -15,6 +15,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/tools/godoc/vfs"
+
 	"sourcegraph.com/sourcegraph/srclib/buildstore"
 	"sourcegraph.com/sourcegraph/srclib/unit"
 	"sourcegraph.com/sourcegraph/srclib/util"
@@ -137,6 +139,20 @@ func readJSONFile(file string, v interface{}) error {
 	return json.NewDecoder(f).Decode(v)
 }
 
+func readJSONFileFS(fs vfs.FileSystem, file string, v interface{}) (err error) {
+	f, err := fs.Open(file)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err2 := f.Close()
+		if err == nil {
+			err = err2
+		}
+	}()
+	return json.NewDecoder(f).Decode(v)
+}
+
 func bytesString(s uint64) string {
 	sizes := []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}
 	if s < 10 {
@@ -153,6 +169,10 @@ func bytesString(s uint64) string {
 		f = "%.1f"
 	}
 	return fmt.Sprintf(f+"%s", val, suffix)
+}
+
+func percent(num, denom int) float64 {
+	return 100 * float64(num) / float64(denom)
 }
 
 // A tracingTransport prints out the full HTTP request and response

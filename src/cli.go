@@ -8,8 +8,8 @@ import (
 
 	"strconv"
 
-	"github.com/gregjones/httpcache"
-	"github.com/gregjones/httpcache/diskcache"
+	"github.com/sourcegraph/httpcache"
+	"github.com/sourcegraph/httpcache/diskcache"
 	"sourcegraph.com/sourcegraph/go-flags"
 	"sourcegraph.com/sourcegraph/go-sourcegraph/auth"
 	"sourcegraph.com/sourcegraph/go-sourcegraph/sourcegraph"
@@ -114,18 +114,6 @@ func newAPIClientWithAuth(cache bool) *sourcegraph.Client {
 		ua = a[getEndpointURL().String()]
 	}
 	return newAPIClient(ua, cache)
-}
-
-var (
-	absDir string
-)
-
-func init() {
-	var err error
-	absDir, err = os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
 }
 
 func Main() error {

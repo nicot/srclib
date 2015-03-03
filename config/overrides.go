@@ -1,8 +1,36 @@
 package config
 
-import "sourcegraph.com/sourcegraph/srclib/unit"
+import (
+	"encoding/json"
+	"log"
+	"os"
 
-var overrides = map[string]*Repository{
+	"strings"
+
+	"sourcegraph.com/sourcegraph/srclib/unit"
+)
+
+func init() {
+	additionalOverrides := os.Getenv("SRCLIB_ADDITIONAL_OVERRIDES")
+	if additionalOverrides != "" {
+		var o map[string]*Repository
+		if err := json.Unmarshal([]byte(additionalOverrides), &o); err != nil {
+			// HACK: In upstart, escaped double quotes include the backslash
+			// in the string. To get around this, we encode json using
+			// single quotes instead of double quotes, and make the switch
+			// here.
+			additionalOverrides = strings.Replace(additionalOverrides, `'`, `"`, -1)
+			if err := json.Unmarshal([]byte(additionalOverrides), &o); err != nil {
+				log.Fatalf("config/overrides.go init(): %s", err)
+			}
+		}
+		for k, v := range o {
+			Overrides[k] = v
+		}
+	}
+}
+
+var Overrides = map[string]*Repository{
 	"sourcegraph.com/sourcegraph/sourcegraph": {
 		URI: "sourcegraph.com/sourcegraph/sourcegraph",
 		Tree: Tree{
@@ -28,9 +56,17 @@ var overrides = map[string]*Repository{
 	"github.com/golang/go": {
 		URI: "github.com/golang/go",
 		Tree: Tree{
-			Config:            map[string]interface{}{"GOROOT": "."},
-			SkipDirs:          []string{"test", "misc", "doc", "lib", "include"},
-			PreConfigCommands: []string{"echo devel > VERSION && cd src && ./make.bash"},
+			Config:   map[string]interface{}{"GOROOT": "."},
+			SkipDirs: []string{"test", "misc", "doc", "lib", "include"},
+			PreConfigCommands: []string{`
+if [ -d /home/srclib ]; then
+curl -L 'https://storage.googleapis.com/golang/go1.4.1.linux-amd64.tar.gz' > /tmp/go1.4.tgz &&
+mkdir /home/srclib/go1.4 &&
+tar -xf /tmp/go1.4.tgz -C /home/srclib/go1.4 --strip-components=1
+fi &&
+cd src
+./make.bash
+`},
 		},
 	},
 	"code.google.com/p/go": {

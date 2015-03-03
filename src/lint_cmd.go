@@ -11,6 +11,7 @@ import (
 
 	"sourcegraph.com/sourcegraph/srclib/buildstore"
 	"sourcegraph.com/sourcegraph/srclib/dep"
+	"sourcegraph.com/sourcegraph/srclib/graph"
 	"sourcegraph.com/sourcegraph/srclib/grapher"
 	"sourcegraph.com/sourcegraph/srclib/unit"
 
@@ -143,7 +144,7 @@ func (c *LintCmd) Execute(args []string) error {
 						switch typ.(type) {
 						case unit.SourceUnit:
 							issues, err = lintSourceUnit(lrepo.RootDir, path, checkFilesExist)
-						case *grapher.Output:
+						case *graph.Output:
 							issues, err = lintGraphOutput(lrepo.RootDir, c.Repo, unitType, unitName, path, checkFilesExist)
 						case []*dep.ResolvedDep:
 							issues, err = lintDepresolveOutput(lrepo.RootDir, path, checkFilesExist)
@@ -222,7 +223,7 @@ func lintSourceUnit(baseDir, path string, checkFilesExist bool) (issues []string
 }
 
 func lintGraphOutput(baseDir, repoURI, unitType, unitName, path string, checkFilesExist bool) (issues []string, err error) {
-	var o grapher.Output
+	var o graph.Output
 	if err := readJSONFile(path, &o); err != nil {
 		return nil, err
 	}
@@ -297,6 +298,9 @@ func lintGraphOutput(baseDir, repoURI, unitType, unitName, path string, checkFil
 	// Check that defs and refs are unique.
 	addMultiErrorAsIssues(grapher.ValidateDefs(o.Defs))
 	addMultiErrorAsIssues(grapher.ValidateRefs(o.Refs))
+	addMultiErrorAsIssues(grapher.ValidateDocs(o.Docs))
+
+	// TODO(sqs): check that docs point to valid defs in the same source unit
 
 	unresolvedInternalRefsByDefKey := grapher.UnresolvedInternalRefs(repoURI, o.Refs, o.Defs)
 	for defKey, unresolvedIRefs := range unresolvedInternalRefsByDefKey {
