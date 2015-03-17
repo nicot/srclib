@@ -10,8 +10,8 @@ import (
 	"sourcegraph.com/sourcegraph/srclib/store/phtable"
 )
 
-// defRefsIndex makes it fast to determine which refs (within in a
-// source unit) are in a file.
+// defRefsIndex makes it fast to determine get all the refs to a def
+// (within a source unit).
 type defRefsIndex struct {
 	phtable *phtable.CHD
 	ready   bool
