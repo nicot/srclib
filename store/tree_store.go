@@ -1,6 +1,8 @@
 package store
 
 import (
+	"log"
+
 	"sourcegraph.com/sourcegraph/srclib/graph"
 	"sourcegraph.com/sourcegraph/srclib/unit"
 )
@@ -111,6 +113,7 @@ func (s treeStores) Refs(f ...RefFilter) ([]*graph.Ref, error) {
 		}
 
 		setImpliedCommitID(f, commitID)
+		log.Printf("# type ts: %T", ts)
 		refs, err := ts.Refs(f...)
 		if err != nil && !isStoreNotExist(err) {
 			return nil, err

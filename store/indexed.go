@@ -224,6 +224,7 @@ func (s *indexedTreeStore) Refs(fs ...RefFilter) ([]*graph.Ref, error) {
 			ufs = append(ufs, f)
 
 		case ByRefDefFilter:
+			log.Printf("# ByRefDefFilter: %+v", f)
 			// HACK: Special-case the defRefUnitsIndex. It doesn't fit cleanly
 			// into our existing index selection scheme.
 			ufs = append(ufs, unitIndexOnlyFilter{f})
@@ -253,6 +254,7 @@ func (s *indexedTreeStore) Refs(fs ...RefFilter) ([]*graph.Ref, error) {
 	fs = append(fs, ByUnits(scopeUnits...))
 
 	// Pass the now more narrowly scoped query onto the underlying store.
+	log.Printf("# s.fsTreeStore type: %T", s.fsTreeStore)
 	return s.fsTreeStore.Refs(fs...)
 }
 
@@ -510,6 +512,7 @@ var _ interface {
 // newIndexedUnitStore creates a new indexed unit store that stores
 // data and indexes in fs.
 func newIndexedUnitStore(fs rwvfs.FileSystem, label string) UnitStoreImporter {
+	// log.Printf("# newIndexedUnitStore")
 	return &indexedUnitStore{
 		indexes: map[string]Index{
 			"path_to_def":  &defPathIndex{},
@@ -695,6 +698,7 @@ func (s *indexedUnitStore) buildIndexes(xs map[string]Index, data *graph.Output,
 				return fmt.Errorf("don't know how to build index %q of type %T", name, x)
 			}
 			if x, ok := x.(persistedIndex); ok {
+				log.Printf("# persisting index %s", name)
 				if err := writeIndex(s.fs, name, x); err != nil {
 					return err
 				}
