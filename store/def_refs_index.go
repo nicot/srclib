@@ -2,8 +2,6 @@ package store
 
 import (
 	"io"
-	"log"
-	"runtime/debug"
 
 	"github.com/alecthomas/binary"
 	"github.com/gogo/protobuf/proto"
@@ -66,9 +64,6 @@ func (x *defRefsIndex) Covers(filters interface{}) int {
 
 // Refs implements refIndexByteOffsets.
 func (x *defRefsIndex) Refs(fs ...RefFilter) (byteOffsets, error) {
-	// log.Printf("# STACK TRACE at defRefsIndex.Refs()")
-	// debug.PrintStack()
-
 	for _, f := range fs {
 		if ff, ok := f.(ByRefDefFilter); ok {
 			ofs, found, err := x.getByDef(ff.withEmptyImpliedValues())
@@ -85,9 +80,6 @@ func (x *defRefsIndex) Refs(fs ...RefFilter) (byteOffsets, error) {
 
 // Build creates the defRefsIndex.
 func (x *defRefsIndex) Build(refs []*graph.Ref, fbr fileByteRanges, ofs byteOffsets) error {
-	log.Printf("# defRefsIndex.Build() STACK")
-	debug.PrintStack()
-
 	vlog.Printf("defRefsIndex: building inverted def->ref index (%d refs)...", len(refs))
 	defToRefOfs := map[graph.RefDefKey]byteOffsets{}
 	for i, ref := range refs {

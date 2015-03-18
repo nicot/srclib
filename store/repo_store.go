@@ -1,7 +1,6 @@
 package store
 
 import (
-	"log"
 	"sync"
 
 	"code.google.com/p/rog-go/parallel"
@@ -175,7 +174,6 @@ func (s repoStores) Defs(f ...DefFilter) ([]*graph.Def, error) {
 }
 
 func (s repoStores) Refs(f ...RefFilter) ([]*graph.Ref, error) {
-	log.Printf("# repoStores.Refs")
 	rss, err := openRepoStores(s.opener, f)
 	if err != nil {
 		return nil, err
@@ -188,7 +186,6 @@ func (s repoStores) Refs(f ...RefFilter) ([]*graph.Ref, error) {
 		}
 
 		setImpliedRepo(f, repo)
-		log.Printf("# rs type: %T", rs)
 		refs, err := rs.Refs(filtersForRepo(repo, f).([]RefFilter)...)
 		if err != nil && !isStoreNotExist(err) {
 			return nil, err
