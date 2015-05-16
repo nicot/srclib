@@ -3,6 +3,8 @@ package src
 import (
 	"log"
 
+	"sourcegraph.com/sourcegraph/srclib"
+
 	"github.com/sqs/go-selfupdate/selfupdate"
 )
 
@@ -31,7 +33,7 @@ func (c *SelfUpdateCmd) Execute(_ []string) error {
 		BinURL:         url,
 		DiffURL:        url,
 		Dir:            "src",
-		CmdName:        "src",
+		CmdName:        srclib.CommandName,
 	}
 
 	if c.CheckOnly {

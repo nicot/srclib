@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime/pprof"
 
+	"sourcegraph.com/sourcegraph/srclib"
 	_ "sourcegraph.com/sourcegraph/srclib/dep"
 	_ "sourcegraph.com/sourcegraph/srclib/scan"
 	"sourcegraph.com/sourcegraph/srclib/src"
@@ -27,5 +28,9 @@ func main() {
 
 	if err := src.Main(); err != nil {
 		os.Exit(1)
+	}
+
+	if src.GlobalOpt.Host != "" {
+		srclib.CommandName = src.GlobalOpt.Host + " " + srclib.CommandName
 	}
 }

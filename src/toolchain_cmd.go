@@ -427,7 +427,7 @@ func installGoToolchain() error {
 	}
 
 	log.Println("Downloading or updating Go toolchain in", srclibpathDir)
-	if err := execCmd("src", "toolchain", "get", "-u", toolchain); err != nil {
+	if err := execCmd(srclib.CommandName, "toolchain", "get", "-u", toolchain); err != nil {
 		return err
 	}
 
@@ -452,13 +452,13 @@ func installRubyToolchain() error {
 	}
 
 	log.Println("Downloading or updating Ruby toolchain in", srclibpathDir)
-	if err := execCmd("src", "toolchain", "get", "-u", toolchain); err != nil {
+	if err := execCmd(srclib.CommandName, "toolchain", "get", "-u", toolchain); err != nil {
 		return err
 	}
 
 	log.Println("Installing deps for Ruby toolchain in", srclibpathDir)
 	if err := execCmd("make", "-C", srclibpathDir); err != nil {
-		return fmt.Errorf("%s\n\nTip: If you are using a version of Ruby other than 2.1.2 (the default for srclib), or if you are using your system Ruby, try using a Ruby version manager (such as https://rvm.io) to install a more standard Ruby, and try Ruby 2.1.2.\n\nIf you are still having problems, post an issue at https://github.com/sourcegraph/srclib-ruby/issues with the full log output and information about your OS and Ruby version.\n\nIf you don't care about Ruby, skip this installation by running `src toolchain install-std --skip ruby`.", err)
+		return fmt.Errorf("%s\n\nTip: If you are using a version of Ruby other than 2.1.2 (the default for srclib), or if you are using your system Ruby, try using a Ruby version manager (such as https://rvm.io) to install a more standard Ruby, and try Ruby 2.1.2.\n\nIf you are still having problems, post an issue at https://github.com/sourcegraph/srclib-ruby/issues with the full log output and information about your OS and Ruby version.\n\nIf you don't care about Ruby, skip this installation by running `%s toolchain install-std --skip ruby`.", srclib.CommandName, err)
 	}
 
 	return nil
@@ -477,7 +477,7 @@ func installJavaScriptToolchain() error {
 	}
 
 	log.Println("Downloading or updating JavaScript toolchain in", srclibpathDir)
-	if err := execCmd("src", "toolchain", "get", "-u", toolchain); err != nil {
+	if err := execCmd(srclib.CommandName, "toolchain", "get", "-u", toolchain); err != nil {
 		return err
 	}
 
@@ -501,7 +501,7 @@ func installPythonToolchain() error {
 
 	srclibpathDir := filepath.Join(strings.Split(srclib.Path, ":")[0], toolchain) // toolchain dir under SRCLIBPATH
 	log.Println("Downloading or updating Python toolchain in", srclibpathDir)
-	if err := execCmd("src", "toolchain", "get", "-u", toolchain); err != nil {
+	if err := execCmd(srclib.CommandName, "toolchain", "get", "-u", toolchain); err != nil {
 		return err
 	}
 

@@ -20,6 +20,8 @@ var (
 	// SRCLIBCACHE environment variable; if empty, it defaults to DIR/.cache,
 	// where DIR is the first entry in Path (SRCLIBPATH).
 	CacheDir = os.Getenv("SRCLIBCACHE")
+
+	CommandName = "src"
 )
 
 func init() {

@@ -10,7 +10,8 @@ var CLI = flags.NewNamedParser("src", flags.Default)
 
 // GlobalOpt contains global options.
 var GlobalOpt struct {
-	Verbose bool `short:"v" description:"show verbose output"`
+	Verbose bool   `short:"v" description:"show verbose output"`
+	Host    string `long:"host" description:"allows embedding src into a host command"`
 }
 
 func init() {
