@@ -11,7 +11,7 @@ type MockRepoStoreImporter struct {
 	Import_ func(commitID string, unit *unit.SourceUnit, data graph.Output) error
 }
 
-func (m *MockRepoStoreImporter) Import(commitID string, unit *unit.SourceUnit, data graph.Output) error {
+func (m MockRepoStoreImporter) Import(commitID string, unit *unit.SourceUnit, data graph.Output) error {
 	return m.Import_(commitID, unit, data)
 }
 
