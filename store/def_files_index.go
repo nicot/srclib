@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"sync"
 
 	"github.com/alecthomas/binary"
 
@@ -25,6 +26,8 @@ type defFilesIndex struct {
 
 	phtable *phtable.CHD
 	ready   bool
+
+	sync.RWMutex
 }
 
 var _ interface {
@@ -65,6 +68,8 @@ func (x *defFilesIndex) getByPath(path string) (byteOffsets, bool, error) {
 
 // Covers implements defIndex.
 func (x *defFilesIndex) Covers(filters interface{}) int {
+	x.RLock()
+	defer x.RUnlock()
 	// TODO(sqs): ensure that x.filters is equivalent to fs (might
 	// require an equals() method on filters, for filters with
 	// internal state that we don't necessarily want to use when
@@ -81,6 +86,8 @@ func (x *defFilesIndex) Covers(filters interface{}) int {
 
 // Defs implements defIndex.
 func (x *defFilesIndex) Defs(fs ...DefFilter) (byteOffsets, error) {
+	x.RLock()
+	defer x.RUnlock()
 	for _, f := range fs {
 		if ff, ok := f.(ByFilesFilter); ok {
 			files := ff.ByFiles()
@@ -102,6 +109,7 @@ func (x *defFilesIndex) Defs(fs ...DefFilter) (byteOffsets, error) {
 
 // Build implements defIndexBuilder.
 func (x *defFilesIndex) Build(defs []*graph.Def, ofs byteOffsets) error {
+	x.RLock()
 	vlog.Printf("defFilesIndex: building index...")
 	f2ofs := make(filesToDefOfs, len(defs)/50)
 	for i, def := range defs {
@@ -113,14 +121,19 @@ func (x *defFilesIndex) Build(defs []*graph.Def, ofs byteOffsets) error {
 	for file, defOfs := range f2ofs {
 		ob, err := binary.Marshal(defOfs)
 		if err != nil {
+			x.RUnlock()
 			return err
 		}
 		b.Add([]byte(file), ob)
 	}
 	h, err := b.Build()
 	if err != nil {
+		x.RUnlock()
 		return err
 	}
+	x.RUnlock()
+	x.Lock()
+	defer x.Unlock()
 	x.phtable = h
 	x.ready = true
 	vlog.Printf("defFilesIndex: done building index.")
@@ -151,6 +164,8 @@ func (v filesToDefOfs) add(file string, ofs int64, perFile int) {
 
 // Write implements persistedIndex.
 func (x *defFilesIndex) Write(w io.Writer) error {
+	x.RLock()
+	defer x.RUnlock()
 	if x.phtable == nil {
 		panic("no phtable to write")
 	}
@@ -159,11 +174,17 @@ func (x *defFilesIndex) Write(w io.Writer) error {
 
 // Read implements persistedIndex.
 func (x *defFilesIndex) Read(r io.Reader) error {
-	var err error
-	x.phtable, err = phtable.Read(r)
+	phtable, err := phtable.Read(r)
+	x.Lock()
+	defer x.Unlock()
+	x.phtable = phtable
 	x.ready = (err == nil)
 	return err
 }
 
 // Ready implements persistedIndex.
-func (x *defFilesIndex) Ready() bool { return x.ready }
+func (x *defFilesIndex) Ready() bool {
+	x.RLock()
+	defer x.RUnlock()
+	return x.ready
+}
